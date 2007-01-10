@@ -7,9 +7,9 @@ Python values in a varchar column of a sql database:
   >>> u = User.find(1)
   >>> u.preferences = {"background": "white", "show_stats": False, "mails_per_page": 10}
   
-It takes to following arguments:
+It takes the following arguments:
   * the first is the name of a column
-  * the keyword format specifies the serialisation format, 
+  * the keyword format specifies the serialization format,
     pickle is default and can be omitted.
 
 The behaviour serializes the column value before saving to the database
@@ -43,12 +43,13 @@ class serialize(Behaviour):
         format = self.kwargs.get("format", "pickle") 
         for name in columns:
             # model_instance._[gs]et_columnname gets called if available
-            # when accessing the columnvalue. We use this hook for
-            # serialisation
+            # when accessing the column value. We use this hook for
+            # serialization
             setattr(obj, "_get_%s" % name, getattr(self, "get_%s" % format))
             setattr(obj, "_set_%s" % name, getattr(self, "set_%s" % format))
 
 
+    # probably dangerous, use only for testing
     def get_repeval(self, value):
         return eval(value)
 
