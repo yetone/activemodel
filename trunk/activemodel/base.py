@@ -248,7 +248,8 @@ class Column(AttributeBase):
     
 
     def __repr__(self):
-        return "%s.%s" % (self._table.table_name, self._name)
+        tname = getattr(self._table, "_alias", None) or self._table.table_name
+        return "%s.%s" % (tname, self._name)
 
 
 
@@ -268,6 +269,7 @@ def tables_and_columns(*attrs):
     t = set()
     for a in attrs:
         if isinstance(a, Query): continue
+        if isinstance(a, SubSelect): continue
         for x in a:
             if isinstance(x, Column):
                 c.add(x)
@@ -276,6 +278,27 @@ def tables_and_columns(*attrs):
 
 
 
+class SubSelect(AttributeBase):
+
+    
+    def _init(self, query):
+        self.query = query
+        self.table_name = str(self.query)
+        self._alias = query._alias
+
+
+    def __getattr__(self, name):
+        if name in self.__dict__:
+            return self.__dict__[name]
+        # XXX: test if column available - else return function
+        return Column(self, name)
+    
+    
+    def __getitem__(self, name):
+        return Column(self, name)
+        
+    
+        
 class Query:
 
 
@@ -301,8 +324,13 @@ class Query:
             self._groupby = groupby
             self._orderby = orderby
             self._alias = alias
+        self.table_name = self._alias
         self._sql = None
-
+        
+    
+    def subselect(self, alias):
+        return SubSelect(self.as(alias))
+        
 
     def __getslice__(self, start, end):
         return Query(self, limit=(start,end))
@@ -325,8 +353,8 @@ class Query:
     order_by = orderby
 
 
-    def groupby(self, o):
-        return Query(self, groupby=o)
+    def groupby(self, g):
+        return Query(self, groupby=g)
     group_by = groupby
 
 
@@ -358,7 +386,7 @@ class Query:
 
 
     def __repr__(self):
-        return "<Query %r>" % self._select_sql()
+        return "<Query %r>" % str(self)
     
         
     def __str__(self):
@@ -613,6 +641,11 @@ class FindMethod(ClassMethod):
         else:
             raise ModelError("unknown find-method: %r" % self.name)
         self.columns = columns.split("_and_")
+        cnames = self.cls.columns.keys()
+        for c in self.columns:
+            if c not in cnames:
+                raise DatabaseError, "%s: Column %r not in %r" % (self.method_name,
+                                                                  c, self.cls.table_name)
 
 
     find_ops = [ (re.compile(op_pat), repl) for op_pat, repl in [
