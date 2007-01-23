@@ -17,8 +17,6 @@ if DEBUG:
     
 
 
-
-
 class AttributeBase(object):
 
 
@@ -77,18 +75,36 @@ class AttributeBase(object):
 
 
     def _children(self):
-        r = [self]
+        r = []
         a = getattr(self, "_a", getattr(self, "_parent", None))
         b = getattr(self, "_b", None)
         if isinstance(a, AttributeBase):
-            r.extend(a._children())
+            r.extend(a._children() or [])
+        r.append(self)
         if isinstance(b, AttributeBase):
-            r.extend(b._children())
+            r.extend(b._children() or [])
         return r
 
 
     def __iter__(self):
         return iter(self._children())
+
+
+
+class SqlParam(AttributeBase):
+    
+
+    def _init(self, value, wildcard=None):
+        self._wildcard = wildcard or Model.__connection__.wildcard
+        self._value = value
+
+        
+    def __repr__(self):
+        return "%s" % self._wildcard
+    
+    
+    def __str__(self):
+        return repr(self)
 
 
 
@@ -101,7 +117,6 @@ class SqlDataType(AttributeBase):
 
     def __str__(self):
         return repr(self)
-
     
 
 
@@ -109,9 +124,7 @@ class SqlString(SqlDataType):
 
 
     def _init(self, value, q='"'):
-        str.__init__(self)
         self._value = "%s%s%s" % (q, value.replace(q, "\\%s" % q), q)
-
 
 
 
@@ -174,34 +187,69 @@ class Function(AttributeBase):
 
 
     def __repr__(self):
-        args = ",".join(map(str,map(self._cond, self._args)))
+        vargs =  map(str,map(self._cond, self._args))
+        args = ",".join(vargs)
         # in-fix instead of post-fix
         name = self._name.upper()
         if name in ["AS", "LIKE"]:
             return "%s %s %s" % (self._parent, name, args)
+        elif name == "BETWEEN": 
+            return "%s BETWEEN %s..%s" % (self._parent, vargs[0], vargs[1])
+        elif name == "IN":
+            if len(vargs) == 1:
+                return "%s = %s" % (self._parent, args)
+            return "%s IN (%s)" % (self._parent, args)
         elif name == "DISTINCT":
             return "DISTINCT %s" % self._parent
-        #elif self._name.lower() in ["distinct"]:
-        #    return "%s %s" % (self._name.upper(),self._parent)        
-        # special function
+        # XXX: istartswith, iendswith, icontains
         elif name == "STARTSWITH":
             q = args[-1]
             if q in ["'", '"']:
                 args = args[:-1] + "%%" + q
             return '%s LIKE %s' % (self._parent, args)
-        # spection function
         elif name == "ENDSWITH":
             q = args[0]
             if q in ["'", '"']:
                 args = q + "%%" + args[1:]
             return '%s LIKE %s' % (self._parent, args)
+        elif name == "CONTAINS":
+            q = args[0]
+            if q in ["'", '"']:
+                args = q + "%%" + args[1:-1] + "%%"  + q
+            return '%s LIKE %s' % (self._parent, args)            
         else:
             if args:
                 args = ",%s" % args
             return "%s(%s%s)" % (self._name.upper(), self._parent, args)
 
+
 FUNC = Function(None, "")
 
+
+
+class AND(AttributeBase):
+
+
+    def _init(self, *ands):
+        self._ands = ands
+
+
+    def __repr__(self):
+        # XXX: add () ?
+        return " AND ".join(map(repr, self._ands))
+
+
+
+class OR(AttributeBase):
+
+
+    def _init(self, *ors):
+        self._ors = ors
+
+
+    def __repr__(self):
+        # XXX: add () ?
+        return " OR ".join(map(repr, self._ors))
 
 
 
@@ -217,9 +265,10 @@ class Attribute(AttributeBase):
     def __repr__(self):
         def paren(x):
             if hasattr(x, "_children") and len(x._children()) > 1:
-                return "(%s)" % x
-            else:
-                return x
+                x = str(x)
+                if not x.startswith("(") and not x.endswith(")"):
+                    x = "(%s)" % x
+            return x
         a = self._cond(self._a)
         b = self._cond(self._b)
         if isinstance(self._a, str):
@@ -328,7 +377,7 @@ class Query:
         self._sql = None
         
     
-    def subselect(self, alias):
+    def as_subselect(self, alias):
         return SubSelect(self.as(alias))
         
 
@@ -501,7 +550,7 @@ class has_one(Behaviour):
             Foreign(obj, f, many=False)
 
 
-
+# XXX: imlement
 class belongs_to(Behaviour): pass
 class has_and_belongs_to_many(Behaviour): pass
 
@@ -552,11 +601,11 @@ class DynamicMethod(object):
         # XXX: better _before_update_cls 
         try: before = getattr(self.parent, "_before_%s" % self.name, None)
         except AttributeError: before = None
-        if before: before()
+        if before: before(self.parent)
         result = self.call(*args, **kwargs)
         try: after = getattr(self.parent, "_after_%s" % self.name, None)
         except AttributeError: after = None
-        if after: after()            
+        if after: after(self.parent)            
         return result
 
 
@@ -574,36 +623,133 @@ class InstanceMethod(DynamicMethod):
 
 
 
+find_ops = [ (re.compile(op_pat), repl) for op_pat, repl in [
+    ("^(.+)_eq$", "\\1 = ?"),
+    ("^(.+)_ne$", "\\1 <> ?"),
+    ("^(.+)_ge$", "\\1 >= ?"),
+    ("^(.+)_gt$", "\\1 > ?"),
+    ("^(.+)_le$", "\\1 <= ?"),
+    ("^(.+)_lt$", "\\1 < ?"),
+    ("^(.+)_startswith$", '\\1 LIKE CONCAT(?, "%")'),
+    ("^(.+)_istartswith$", 'LOWER(\\1) LIKE CONCAT(?, LOWER("%"))'),    
+    ("^(.+)_endswith$", '\\1 LIKE CONCAT("%", ?)'),
+    ("^(.+)_contains$", '\\1 LIKE CONCAT("%", ?, "%")'),
+    ("^(.+)_eq$", "\\1 = ?")
+    ] ]
 
-def simple_query(function_name, cls, columns, *values, **options):
+
+def query_keywords(cls, *values, **options):
+    # XXX: work on real column objects
+    table = cls.table_name
+    for v in values: options.update(v)
+    c = []
+    params = []
+    wc = cls.__connection__.wildcard
+    for name, value in options.items():
+        name = "%s.%s" % (table, name)
+        if isinstance(value, tuple):
+            c.append("%s BETWEEN %s AND %s" % (name, wc, wc))
+            if len(value) != 2:
+                raise ValueError, "length for between value is not 2"
+            params.extend(list(value))
+        elif isinstance(value, list):
+            if name.endswith("_not_in"):
+                name = name[:-7]
+                c.append("%s NOT IN (%s)" % (name, ",".join([wc]*len(value))))
+            else:
+                c.append("%s IN (%s)" % (name, ",".join([wc]*len(value))))
+            params.extend(value)
+        else:
+            found = False
+            for op_re, repl in find_ops:
+                cond = op_re.sub(repl, name)
+                if cond != name:
+                    cond = cond.replace("?", wc)
+                    c.append(cond)
+                    params.append(value)
+                    found = True
+                    break
+            if not found:
+                c.append("%s = %s" % (name, wc))
+                params.append(value)
+    return table, " AND ".join(c), tuple(params)
+
+
+
+
+def query_simple(cls, columns, *values, **conditions):
+    def get_col(col):
+        if isinstance(col, Column): return col
+        return cls.table_columns[col]
     if not isinstance(columns, list):
         columns = columns.split("_and_")
-    conditions = options.get("conditions")
+    columns = map(get_col, columns)
+    conditions = conditions.get("conditions", [])
+    if not isinstance(conditions, list):
+        conditions = [conditions]
+    wc = cls.__connection__.wildcard
     if not values and not conditions:
-        raise ValueError, "%s: neither values nor conditions specified" % function_name
-
+        raise ValueError, "neither values nor conditions specified"
+    params = []
+    if conditions:
+        for i in range(len(conditions)):
+            c = conditions[i]
+            if 1: #if isinstance(c, basestring):
+                if isinstance(c, tuple):
+                    ps = c[1]
+                    if not isinstance(ps, list): ps = [ps]
+                    for p in ps:
+                        #if not isinstance(p, SqlParam): p = SqlParam(p, wc)
+                        # XXX: replace wildcard
+                        params.append(p)
+                    c = c[0]
+                if not isinstance(c, RawSql):
+                    c = RawSql(c)
+                conditions[i] = c
     if values:
         if len(values) != len(columns):
-            raise ValueError, "%s: numbers of values does not match number of columns" % function_name
-
-        q = []
+            raise ValueError, "numbers of values does not match number of columns"
         i = 0
-        params = []
         for col in columns:
-            cval = values[i]
-            if not isinstance(cval, list):
-                cval = [cval]
-            params.extend(cval)
-            # XXX: better use IN
-            q.append(" OR ".join(
-                ["%s.%s = %s" % (cls.table_name, col, cls.__connection__.wildcard) for v in cval]))
+            col_values = values[i]
+            if not isinstance(col_values, list):
+                col_values = [col_values]
+            cond = col.IN(*[SqlParam(cv, wc) for cv in col_values])
+            conditions.append(cond)
+            params.extend(col_values)
             i += 1
-        return cls.table_name, " AND ".join(q), tuple(params)
-    else:
-        if not isinstance(conditions, list):
-             conditions = [conditions]
-        return cls.table_name, " AND ".join(conditions)
+    return cls.table_name, AND(*conditions), tuple(params)
+        
+ 
 
+
+
+class RecordList:
+
+
+    def __init__(self, l, cond):
+        self.l = l
+        self.cond = conf
+
+
+    def __len__(self):
+        return len(self.l)
+    
+
+    def __getiten__(self, i):
+        return self.l[i]
+    
+
+    def __getattr__(self, name):
+        if name in self.__dict__:
+            return self.__dict__[name]
+        elif name.startswith("find"):
+            setattr(self, name, FindMethod(name, self, conditions=self.cond))
+        
+
+    def __iter__(self):
+        return iter(self.l)
+    
 
 
 class FindMethod(ClassMethod):
@@ -641,35 +787,20 @@ class FindMethod(ClassMethod):
         else:
             raise ModelError("unknown find-method: %r" % self.name)
         self.columns = columns.split("_and_")
-        cnames = self.cls.columns.keys()
-        for c in self.columns:
-            if c not in cnames:
-                raise DatabaseError, "%s: Column %r not in %r" % (self.method_name,
-                                                                  c, self.cls.table_name)
-
-
-    find_ops = [ (re.compile(op_pat), repl) for op_pat, repl in [
-        ("^(.+)_eq$", "\\1 = ?"),
-        ("^(.+)_ne$", "\\1 <> ?"),
-        ("^(.+)_ge$", "\\1 >= ?"),
-        ("^(.+)_gt$", "\\1 > ?"),
-        ("^(.+)_le$", "\\1 <= ?"),
-        ("^(.+)_lt$", "\\1 < ?"),
-        ("^(.+)_startswith$", '\\1 LIKE CONCAT(?, "%")'),
-        ("^(.+)_endswith$", '\\1 LIKE CONCAT("%", ?)'),
-        ("^(.+)_contains$", '\\1 LIKE CONCAT("%", ?, "%")'),
-        ("^(.+)_eq$", "\\1 = ?")
-        ] ]
+        #cnames = self.cls.columns.keys()
+        #for c in self.columns:
+        #    if c not in cnames:
+        #        raise DatabaseError, "%s: Column %r not in %r" % (self.method_name,
+        #                                                          c, self.cls.table_name)
 
 
     def find_query(self, *values, **options):
-        table = self.cls.table_name
-        where = " AND ".join(map(str, values))
-        params = ()
-        return table, where, params
+        # XXX: better implementation needed
+        return self.cls.table_name, " AND ".join(map(str, values)), ()
 
 
     def find_keywords(self, *values, **options):
+        print "+++", query_keywords(self.cls, *values, **options)
         table = self.cls.table_name
         for v in values: options.update(v)
         c = []
@@ -713,8 +844,8 @@ class FindMethod(ClassMethod):
         elif self.name in ["find_by", "find_all_by"]:
             table, where, params = self.find_keywords(*values, **options)
         else:
-            table, where, params = simple_query(
-                repr(self), self.cls, self.columns, *values, **options)
+            table, where, params = query_simple(
+                self.cls, self.columns, *values, **options)
         options = options.get("options", {})
         sql = "SELECT %s.* FROM %s WHERE %s" % (table, table, where)
         groupby = options.get("groupby")
@@ -766,8 +897,7 @@ class DeleteClassMethod(ClassMethod):
 
     def call(self, *values, **options):
         # XXX:
-        table, where, params = simple_query(
-            self.method_name,
+        table, where, params = query_simple(
             self.cls, self.columns, *values, **options)
         if DEBUG:
             debug("DELETE FROM %s WHERE %s %r" % (table, where, params))
