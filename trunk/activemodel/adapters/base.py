@@ -107,6 +107,7 @@ class DatabaseAdapter(object):
                 register_protocol(aname)
             return t
 
+
     def error(self, msg):
         raise DatabaseError, msg
 
