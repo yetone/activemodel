@@ -50,7 +50,6 @@ class ConnectionPool(Queue.Queue):
 
 
     def get(self, block=1):
-        if DEBUG: debug("ConnectionPool.get(%s)" % block)
         try:
             return self.empty() and self.connector() or \
                    Queue.Queue.get(self, block)
@@ -59,7 +58,6 @@ class ConnectionPool(Queue.Queue):
 
         
     def put(self, obj, block=1):
-        if DEBUG: debug("ConnectionPool.put(%s, %s)" % (obj, block))
         try:
             return self.full() and None or Queue.Queue.put(self, obj, block)
         except Queue.Full:
@@ -88,18 +86,28 @@ class DatabaseError(Exception):
     pass
 
 
+registered_protocol_list = []
+
+def register_protocol(proto):
+    if proto in registered_protocol_list:
+        return
+    urlparse.uses_netloc.append(proto)
+    urlparse.uses_relative.append(proto)
+    urlparse.uses_query.append(proto)
+    urlparse.uses_params.append(proto)
+    urlparse.uses_fragment.append(proto)
+    registered_protocol_list.append(proto)
+
+# Hack to make modules dynamically available
+map(register_protocol, ["mysql", "sqlite3"])
+
+
 class DatabaseAdapter(object):
     __registered__ = {}
 
 
     class __metaclass__(type):
         def __new__(cls, name, bases, attrs):
-            def register_protocol(proto):
-                urlparse.uses_netloc.append(proto)
-                urlparse.uses_relative.append(proto)
-                urlparse.uses_query.append(proto)
-                urlparse.uses_params.append(proto)
-                urlparse.uses_fragment.append(proto)
             t = type.__new__(cls, name, bases, attrs)
             aname = name[:-7].lower()
             if aname != "database":
@@ -114,6 +122,8 @@ class DatabaseAdapter(object):
 
     @staticmethod
     def get(name):
+        if name not in DatabaseAdapter.__registered__:
+            __import__("activemodel.adapters", {}, {}, [name])
         try:
             return DatabaseAdapter.__registered__[name]
         except KeyError:
@@ -166,6 +176,22 @@ class DatabaseRecord(object):
 
 
 class DatabaseResult(object):
+
+
+    def __init__(self, cursor):
+        self.cursor = cursor
+        self.types = {}
+        self.column_names = []
+        for entry in self.cursor.description:
+            (name, type_code,
+             display_size, internal_size, precision, scale,
+             null_ok) = entry
+            self.column_names.append(name)
+
+
+    def __len__(self):
+        return self.cursor.rowcount
+
     
     def __iter__(self):
         result = []

@@ -7,23 +7,7 @@ DEBUG = True
 
 
 class MySQLResult(DatabaseResult):
-
-
-    def __init__(self, cursor):
-        self.cursor = cursor
-        self.types = {}
-        self.column_names = []
-        for entry in self.cursor.description:
-            (name, type_code,
-             display_size, internal_size, precision, scale,
-             null_ok) = entry
-            self.column_names.append(name)
-##            self.types[name] = self.typemap.get(type_code, None)
-
-
-    def __len__(self):
-        return self.cursor.rowcount
-
+    pass
 
 
 

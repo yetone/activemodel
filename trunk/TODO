@@ -1,0 +1,16 @@
+* istartswith, iendswith, icontains
+* FindResultList with sub-finds
+* implement belongs_to, has_and_belongs_to_many
+* implement delete_all
+* exception on save, insert, update, ..
+* more and more complex examples
+* complete documentation
+* sqlite adapter
+* implement acts_as_tree, acts_as_*, taggable
+* validates_*
+* use doctest
+* Behaviour api without __all__
+* better names for Behaviour, AttriuteBase, Foreign
+* use hook-api
+* profiling for better performance
+* remove print-statements
