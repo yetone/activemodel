@@ -1,5 +1,3 @@
-import os
-import pwd
 import re
 import time
 import datetime
@@ -727,7 +725,7 @@ def query_simple(cls, columns, *values, **conditions):
 class RecordList:
 
 
-    def __init__(self, l, cond):
+    def __init__(self, l, conf):
         self.l = l
         self.cond = conf
 

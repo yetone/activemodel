@@ -22,14 +22,10 @@ def pluralize(name):
 
 
 
-cap_re = re.compile("([A-Z][a-z]+)([A-Z][a-z]+)")
+cc_re = re.compile("([A-Z][a-z]+)")
 
 def from_camelcase(s):
-    while True:
-        old = s
-        s = cap_re.sub("\\1_\\2", s)
-        if old == s: break
-    return s.lower()
+    return "_".join(cc_re.split(s)[1:-1]).lower()
 
 
 def to_camelcase(s):
@@ -40,9 +36,11 @@ def to_camelcase(s):
 def install_hook(obj, name, function):
     h = getattr(obj, name, None)
     if not h:
-        setattr(obj, name, Hook())
+        h = Hook()
+        setattr(obj, name, h)
     h.append(function)
-    
+
+
 
 class Hook:
 
