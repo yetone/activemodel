@@ -1,6 +1,7 @@
 #summary README
 
 activemodel - an !ActiveRecord implementation as seen in Rails for Python
+by Henning Schroeder (henning.schroeder@gmail.com)
 
 = Description =
 

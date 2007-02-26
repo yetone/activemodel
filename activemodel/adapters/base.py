@@ -98,7 +98,7 @@ def register_protocol(proto):
     urlparse.uses_fragment.append(proto)
     registered_protocol_list.append(proto)
 
-# Hack to make modules dynamically available
+# XXX: Hack to make modules dynamically available
 map(register_protocol, ["mysql", "sqlite3"])
 
 
@@ -187,16 +187,27 @@ class DatabaseResult(object):
              display_size, internal_size, precision, scale,
              null_ok) = entry
             self.column_names.append(name)
-
+        self.cache = None
+    
 
     def __len__(self):
-        return self.cursor.rowcount
+        rowcount = self.cursor.rowcount
+        if rowcount == -1:
+            # XXX: Not supported, e.g. pysqlite2
+            # Is this a good solution
+            self.cache = self.cursor.fetchall()
+            rowcount = len(self.cache)
+        return rowcount
 
     
     def __iter__(self):
         result = []
-        for row in self.cursor.fetchall():
-            yield DatabaseRecord(zip(self.column_names, row))
+        if self.cache != None:
+            for row in self.cache:
+                yield DatabaseRecord(zip(self.column_names, row))
+        else:
+            for row in self.cursor.fetchall():
+                yield DatabaseRecord(zip(self.column_names, row))
         raise StopIteration
 
 
@@ -205,7 +216,13 @@ class DatabaseResult(object):
 
 
     def get_next(self, iterate=False):
-        one = self.cursor.fetchone()
+        if self.cache != None:
+            if len(self.cache):
+                one = self.cache[0]
+                del self.cache[0]
+            else: one = None
+        else:
+            one = self.cursor.fetchone()
         if one == None:
             return
         record = DatabaseRecord(zip(self.column_names, one))

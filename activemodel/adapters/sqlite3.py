@@ -21,8 +21,11 @@ class Sqlite3Adapter(DatabaseAdapter):
             self.error("Required database module " \
                        "pysqlite2 not available: %s" % e)
         try:
+            filename = db_url.netloc
+            if db_url.path:
+                 filename += ("/" + db_url.path)
             self.con = self.mod.Connection(
-                db_url.netloc,
+                filename,
                 **db_url.options)
         except Exception, e:
             self.error("Could not connect to database %r: %s"  % (
