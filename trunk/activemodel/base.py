@@ -937,8 +937,8 @@ class SaveMethod(InstanceMethod):
             del d[pk]
         sql = "INSERT INTO %s (%s) VALUES (%s)" % (
             self.obj.table_name,
-            ", ".join(d.keys()),
-            ", ".join(
+            ", ".join([pk]+d.keys()),
+            ", ".join(["NULL"]+
               [self.obj.__connection__.wildcard] * len(d)))
         params = tuple(d.values())
         if DEBUG:
