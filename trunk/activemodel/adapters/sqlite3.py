@@ -1,4 +1,3 @@
-from pysqlite2 import dbapi2 as sqlite
 from activemodel.adapters.base import *
 from activemodel.base import *
 
@@ -15,11 +14,15 @@ class Sqlite3Adapter(DatabaseAdapter):
 
 
     def __init__(self, db_url):
+        # XXX: other order?
         try:
             self.mod = __import__("pysqlite2.dbapi2", {}, {}, ["dbapi2"])
         except ImportError, e:
-            self.error("Required database module " \
-                       "pysqlite2 not available: %s" % e)
+            try:
+                self.mod = __import__("sqlite3.dbapi2", {}, {}, ["dbapi2"])
+            except ImportError, e:
+                self.error("Required database module " \
+                           "sqlite3 or pysqlite2 not available: %s" % e)
         try:
             filename = db_url.netloc
             if db_url.path:
