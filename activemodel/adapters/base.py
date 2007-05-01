@@ -130,6 +130,42 @@ class DatabaseAdapter(object):
             raise DatabaseError, "Adapter for %r not available" % name
 
 
+    def __call__(self, sql, *args):
+        raise NotImplementedError
+
+
+    def inspect_table(self, table_name):
+        raise NotImplementedError
+
+
+    def list_tables(self):
+        raise NotImplementedError
+
+
+    def create_table(self, name, *columns, **options):
+        self("CREATE TABLE %r (%s)" % (name, ",".join(map(str, columns))))
+
+
+    def drop_table(self, name):
+        self("DROP TABLE %r" % name)
+
+
+    def rename_table(self, table, new_name):
+        self("ALTER TABLE %r RENAME %r" % (table, new_name))
+
+
+    def add_column(self, table, column):
+        self("ALTER TABLE %r ADD %s" % (table, column))
+
+
+    def rename_column(self, table, column, new_name):
+        self("ALTER TABLE %r CHANGE %r %r" % (table, column, new_name))
+
+
+    def remove_column(self, table, name):
+        self("ALTER TABLE %r DROP %r" % (table, name))
+    
+
 
 
 class DatabaseRecord(object):
