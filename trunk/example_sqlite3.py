@@ -14,7 +14,7 @@ class Post(Model):
 class Comment(Model):
     belongs_to("posts")
 
-Model.establish_connection("sqlite3://test.db")
+Model.establish_connection("sqlite://test.db")
 
 for sql in CREATE: 
     print sql

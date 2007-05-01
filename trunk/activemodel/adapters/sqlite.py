@@ -9,7 +9,7 @@ class SqliteResult(DatabaseResult):
     pass
 
 
-class Sqlite3Adapter(DatabaseAdapter):
+class SqliteAdapter(DatabaseAdapter):
     wildcard = "?"
 
 
