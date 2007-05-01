@@ -860,6 +860,7 @@ class FindMethod(ClassMethod):
                 obj = self.cls()
                 for key in row:
                     obj[key] = row[key]
+                obj.__created__ = False
                 a.append(obj)
             return a
         elif result:
@@ -867,16 +868,17 @@ class FindMethod(ClassMethod):
             row = result.get_next()
             for key in row:
                 obj[key] = row[key]
+            obj.__created__ = False
             return obj
         elif self.create:
             data = {}
-            i = 0
-            for col in self.columns:
+            for i, col in enumerate(self.columns):
                 data[col] = values[i]
-                i += 1
             data.update(
                 options.get("create_data", {}))
-            return self.cls.create(**data)
+            obj = self.cls.create(**data)
+            obj.__created__ = True 
+            return obj
         else:
             raise ModelNotFound("%s.%s%r" % (self.cls.__name__, self.method_name, params))
 
