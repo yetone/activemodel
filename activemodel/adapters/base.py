@@ -99,7 +99,7 @@ def register_protocol(proto):
     registered_protocol_list.append(proto)
 
 # XXX: Hack to make modules dynamically available
-map(register_protocol, ["mysql", "sqlite3"])
+map(register_protocol, ["mysql", "sqlite"])
 
 
 class DatabaseAdapter(object):
