@@ -200,6 +200,7 @@ class Function(AttributeBase):
         elif name == "DISTINCT":
             return "DISTINCT %s" % self._parent
         # XXX: istartswith, iendswith, icontains
+        # XXX: Working if % != wildcard?
         elif name == "STARTSWITH":
             q = args[-1]
             if q in ["'", '"']:
@@ -752,7 +753,7 @@ class RecordList:
 
 class FindMethod(ClassMethod):
     pattern = "(find_or_create_by_.+|find_by_.+|find_all_by_.+|find_by|find_all_by|find_all|find)$"
-
+    # XXX: find_or_create, find_or_none
 
     def __repr__(self):
         return "%s.%s" % (self.cls, self.name)
@@ -798,7 +799,8 @@ class FindMethod(ClassMethod):
 
 
     def find_keywords(self, *values, **options):
-        print "+++", query_keywords(self.cls, *values, **options)
+        if DEBUG:
+            debug("find_keyword: %r" % query_keywords(self.cls, *values, **options))
         table = self.cls.table_name
         for v in values: options.update(v)
         c = []
@@ -916,6 +918,7 @@ class CreateMethod(ClassMethod):
         else:
             obj = self.cls(**namevalues)
             if "created_at" in obj.table_columns.keys(): # XXX: created_on
+                # XXX: check if format is something like %Y%m%d%H%M%S
                 obj["created_at"] = time.time()
             pkid = obj.save()
             obj[self.cls.primary_key] = pkid
@@ -985,7 +988,8 @@ class UpdateInstanceMethod(InstanceMethod):
         self.obj.__data__.update(__data or {})
         self.obj.__data__.update(kwdata)
         if "updated_at" in list(self.obj): # XXX: updated_on
-            self.obj.updated_at = time.time() 
+            # XXX: check if format is something like %Y%m%d%H%M%S
+            self.obj["updated_at"] = time.time() 
         sql = "UPDATE %s SET " % self.obj.table_name
         params = []
         pk = self.obj.primary_key
@@ -1043,6 +1047,7 @@ class ModelNotFound(ModelError):
 
 
 
+# XXX: example, should be moved to the web framework
 def find_or_404(find_function, *args, **kwargs):
     try:
         result = find_function(*args, **kwargs)
