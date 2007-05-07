@@ -154,6 +154,7 @@ Some magic
    }}}
    The keyword parameter create_data is optional and is used when no
    object was found to create a new one together with the search data.
+   p.__created__ is True if the object was created.
  * update
 
 
